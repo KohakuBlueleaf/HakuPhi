@@ -1,0 +1,9 @@
+torch
+transformers
+warmup-scheduler
+pytorch-lightning
+wandb
+lycoris-lora
+xformers
+datasets
+einops
