@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_sch
+import torch.utils.data as Data
 
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 
@@ -24,7 +25,7 @@ from train_utils import ProdigyLRMonitor
 
 
 def load_model(
-    path='microsoft/phi-1_5', 
+    path='microsoft/phi-2', 
     load_extra_tokens=True
 ) -> tuple[PreTrainedTokenizer, PhiForCausalLM]:
     tokenizer = AutoTokenizer.from_pretrained(path)
@@ -42,50 +43,36 @@ def load_trainer(model: PreTrainedModel, lycoris_model: nn.Module = None) -> Cau
         model,
         lycoris_model,
         name = 'Phi-MultiLingual',
-        lr = 1,
+        lr = 0.5,
         optimizer= Prodigy,
         opt_configs = {
-            'weight_decay': 0.05,
+            'weight_decay': 0.1,
             'betas': (0.9, 0.95),
             'use_bias_correction': True,
             'decouple': True,
         },
         lr_scheduler = lr_sch.CosineAnnealingLR,
         lr_sch_configs = {
-            'T_max': 3000,
-            'eta_min': 1e-7,
+            'T_max': (216000+48967)//128,
+            'eta_min': 1e-4,
         },
         use_warm_up = False,
         warm_up_period = 1000,
     )
 
 
-def load_guanaco_dataloader(tokenizer, batch_size=8):
-    raw_datas = guanaco.load('mini')['train']
+def load_guanaco_dataset(tokenizer):
+    raw_datas = guanaco.load('chat')['train']
     processor = guanaco.processor(tokenizer, cutoff_len=1024, train_on_inputs=False, padding=True)
     dataset = raw_datas.shuffle().map(processor, desc='load data', batch_size=320)
-    def collate(batch):
-        return {
-            'input_ids': torch.stack([torch.tensor(x['input_ids']) for x in batch]),
-            'attention_mask': torch.stack([torch.tensor(x['attention_mask']) for x in batch]),
-            'labels': torch.stack([torch.tensor(x['labels']) for x in batch]),
-        }
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=collate)
-    return data_loader
+    return dataset
 
 
-def load_final_dataloader(tokenizer, batch_size=8):
+def load_final_dataset(tokenizer):
     raw_datas = final.load('all')['train']
     processor = final.processor(tokenizer, cutoff_len=1024, train_on_inputs=False, padding=True)
     dataset = raw_datas.shuffle().map(processor, desc='load data', batch_size=320)
-    def collate(batch):
-        return {
-            'input_ids': torch.stack([torch.tensor(x['input_ids']) for x in batch]),
-            'attention_mask': torch.stack([torch.tensor(x['attention_mask']) for x in batch]),
-            'labels': torch.stack([torch.tensor(x['labels']) for x in batch]),
-        }
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, collate_fn=collate)
-    return data_loader
+    return dataset
 
 
 def lycoris_wrapper(
@@ -110,14 +97,13 @@ def main():
     text_model.half()
     text_model.gradient_checkpointing_enable()
     text_model.use_neftune = True
-    text_model.neft_alpha = 25
+    text_model.neft_alpha = 50
     apply_attn_algo(text_model, 'xformers')
     
     # FP8
-    text_model.lm_head.float()
-    text_model.transformer.embd.float()
     # text_model.transformer.h.to(torch.float8_e4m3fn)
-    text_model.transformer.h.requires_grad_(False)
+    # text_model.lm_head.to(torch.float8_e4m3fn)
+    text_model.requires_grad_(False)
     
     # wrap lycoris
     lycoris_model = None
@@ -125,7 +111,7 @@ def main():
         'multiplier': 1.0,
         'linear_dim': 100000,
         'linear_alpha': 0,
-        'factor': 8,
+        'factor': 16,
         'algo': 'lokr',
     }
     lycoris_presets = {
@@ -141,8 +127,18 @@ def main():
         text_model, lycoris_model
     ).cuda()
     
-    # data_loader = load_guanaco_dataloader(tokenizer, batch_size=8)
-    data_loader = load_final_dataloader(tokenizer, batch_size=8)
+    # data_loader = load_guanaco_dataset(tokenizer)
+    main_dataset = load_final_dataset(tokenizer)
+    reg_dataset = load_guanaco_dataset(tokenizer)
+    dataset = Data.ConcatDataset([main_dataset, reg_dataset])
+    
+    def collate(batch):
+        return {
+            'input_ids': torch.stack([torch.tensor(x['input_ids']) for x in batch]),
+            'attention_mask': torch.stack([torch.tensor(x['attention_mask']) for x in batch]),
+            'labels': torch.stack([torch.tensor(x['labels']) for x in batch]),
+        }
+    data_loader = Data.DataLoader(dataset, shuffle=True, batch_size=8, collate_fn=collate)
     
     # Train!
     logger = None
@@ -156,10 +152,9 @@ def main():
         accelerator = "gpu",
         devices = 1,
         max_epochs = 1,
-        max_steps = 3000,
         logger = logger,
         log_every_n_steps = 1,
-        accumulate_grad_batches = 4,
+        accumulate_grad_batches = 16,
         callbacks = [
             ProdigyLRMonitor(logging_interval='step'),
             ModelCheckpoint(every_n_train_steps=1000)

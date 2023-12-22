@@ -42,7 +42,7 @@ with torch.no_grad(), torch.autocast('cuda', dtype=torch.float16):
 Use student's preferation to predict the summary of final choosed course.
 
 ### Student Preferation:
-私は情報工学部の学生で、哲学の内容を学びたいと思っています。
+對於一個大一資工系的學生，想要修讀哲學的話什麼樣的課程最適合呢?
 
 ### Summary of Choosed Course:
 """
@@ -52,11 +52,11 @@ Use student's preferation to predict the summary of final choosed course.
             model=model,
             tokenizer=tokenizer,
             prompt=prompt,
-            temperature=0.5,
-            top_p=0.8,
-            top_k=40,
-            repetition_penalty=1.25,
-            max_new_tokens=512,
+            temperature=1.5,
+            top_p=0.75,
+            top_k=60,
+            repetition_penalty=1.15,
+            max_new_tokens=1024,
             stream_output=True,
         ), 
         disable=True
