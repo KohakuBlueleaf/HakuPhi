@@ -5,6 +5,7 @@ from datasets import load_dataset
 SELF_FOLDER = os.path.dirname(__file__)
 SPLITS = {
     'all': ['guanaco_chat_all.json', 'guanaco_non_chat_json'],
+    'chat': ['guanaco_chat_all.json'],
     'non-chat': ['guanaco_non_chat.json'],
     'mini': ['guanaco_non_chat_mini_52K.json'],
     'test': ['test.json'],

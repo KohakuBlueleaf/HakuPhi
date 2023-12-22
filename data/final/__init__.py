@@ -24,10 +24,10 @@ def generate_prompt(data_point):
     user_part = f"""### Instruct:
 Use student's preferation to predict the summary of final choosed course.
 
-### Student Preferation:
+### Input:
 {data_point['preferation']}
 
-### Summary of Choosed Course:"""
+### Response:"""
     
     output_part = f"""### Summary of Choosed Course:
 {data_point["summary"]}"""
