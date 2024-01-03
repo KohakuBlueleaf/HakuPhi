@@ -940,9 +940,12 @@ class PhiForCausalLM(PhiPreTrainedModel):
             print("`attention_mask` is not supported during training. Using it might lead to unexpected results.")
 
         if self.gradient_checkpointing and self.training:
-            hidden_layer = checkpoint(self.transformer.embd, input_ids)
+            hidden_layer = checkpoint(self.transformer.embd, input_ids, use_reentrant=True)
         else:
             hidden_layer = self.transformer.embd(input_ids)
+        
+        if self.training:
+            hidden_layer.requires_grad_(True)
         
         # NEFTune
         if self.training and getattr(self, 'use_neftune', False):
@@ -953,7 +956,7 @@ class PhiForCausalLM(PhiPreTrainedModel):
 
         if self.gradient_checkpointing and self.training:
             for module in self.transformer.h:
-                hidden_layer = checkpoint(module, hidden_layer)
+                hidden_layer = checkpoint(module, hidden_layer, use_reentrant=True)
         else:
             for module in self.transformer.h:
                 hidden_layer = module(hidden_layer, past_key_values=past_key_values, attention_mask=attention_mask)

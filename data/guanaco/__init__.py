@@ -26,7 +26,7 @@ def load(split='all'):
 def generate_prompt(data_point):
     '''Guanaco-alpaca chat format'''
     if data_point["input"]:
-        user_part = f"""### Instruction:
+        user_part = f"""### Instruct:
 {data_point["instruction"]}
 
 ### Input:
@@ -34,7 +34,7 @@ def generate_prompt(data_point):
 
 """
     else:
-        user_part = f"""### Instruction:
+        user_part = f"""### Instruct:
 {data_point["instruction"]}
 
 """

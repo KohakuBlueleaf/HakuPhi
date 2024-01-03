@@ -27,9 +27,9 @@ Use student's preferation to predict the summary of final choosed course.
 ### Input:
 {data_point['preferation']}
 
-### Response:"""
+"""
     
-    output_part = f"""### Summary of Choosed Course:
+    output_part = f"""### Response:
 {data_point["summary"]}"""
 
     return user_part, output_part

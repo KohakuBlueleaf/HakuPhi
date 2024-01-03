@@ -1,3 +1,6 @@
+import os
+os.environ['TOKENIZERS_PARALLELISM']='true'
+
 from data import guanaco, final
 
 import torch
@@ -24,6 +27,12 @@ from prodigyopt import Prodigy
 from train_utils import ProdigyLRMonitor
 
 
+EPOCH = 5
+GPUS = 2
+BATCH_SIZE = 16
+GRAD_ACC = 2
+
+
 def load_model(
     path='microsoft/phi-2', 
     load_extra_tokens=True
@@ -38,7 +47,7 @@ def load_model(
     return tokenizer, model
 
 
-def load_trainer(model: PreTrainedModel, lycoris_model: nn.Module = None) -> CausalLMTrainer:
+def load_trainer(model: PreTrainedModel, lycoris_model: nn.Module = None, t_max=1000_000) -> CausalLMTrainer:
     return CausalLMTrainer(
         model,
         lycoris_model,
@@ -53,8 +62,8 @@ def load_trainer(model: PreTrainedModel, lycoris_model: nn.Module = None) -> Cau
         },
         lr_scheduler = lr_sch.CosineAnnealingLR,
         lr_sch_configs = {
-            'T_max': (216000+48967)//128,
-            'eta_min': 1e-4,
+            'T_max': t_max,
+            'eta_min': 1e-2,
         },
         use_warm_up = False,
         warm_up_period = 1000,
@@ -62,7 +71,7 @@ def load_trainer(model: PreTrainedModel, lycoris_model: nn.Module = None) -> Cau
 
 
 def load_guanaco_dataset(tokenizer):
-    raw_datas = guanaco.load('chat')['train']
+    raw_datas = guanaco.load('mini')['train']
     processor = guanaco.processor(tokenizer, cutoff_len=1024, train_on_inputs=False, padding=True)
     dataset = raw_datas.shuffle().map(processor, desc='load data', batch_size=320)
     return dataset
@@ -123,14 +132,15 @@ def main():
         lycoris_presets
     )
     
-    trainer_module = load_trainer(
-        text_model, lycoris_model
-    ).cuda()
-    
-    # data_loader = load_guanaco_dataset(tokenizer)
+    # Setup dataset
     main_dataset = load_final_dataset(tokenizer)
     reg_dataset = load_guanaco_dataset(tokenizer)
-    dataset = Data.ConcatDataset([main_dataset, reg_dataset])
+    dataset = Data.ConcatDataset([reg_dataset, main_dataset])
+    
+    trainer_module = load_trainer(
+        text_model, lycoris_model, len(dataset)*EPOCH//(BATCH_SIZE*GPUS*GRAD_ACC)
+    )
+    print(f"Total training step: {len(dataset)*EPOCH//(BATCH_SIZE*GPUS*GRAD_ACC)}")
     
     def collate(batch):
         return {
@@ -138,7 +148,7 @@ def main():
             'attention_mask': torch.stack([torch.tensor(x['attention_mask']) for x in batch]),
             'labels': torch.stack([torch.tensor(x['labels']) for x in batch]),
         }
-    data_loader = Data.DataLoader(dataset, shuffle=True, batch_size=8, collate_fn=collate)
+    data_loader = Data.DataLoader(dataset, shuffle=True, batch_size=BATCH_SIZE, collate_fn=collate, num_workers=4)
     
     # Train!
     logger = None
@@ -150,16 +160,17 @@ def main():
     trainer = pl.Trainer(
         precision = '16-mixed',
         accelerator = "gpu",
-        devices = 1,
-        max_epochs = 1,
+        devices = GPUS,
+        max_epochs = EPOCH,
         logger = logger,
         log_every_n_steps = 1,
-        accumulate_grad_batches = 16,
+        accumulate_grad_batches = 2,
         callbacks = [
             ProdigyLRMonitor(logging_interval='step'),
             ModelCheckpoint(every_n_train_steps=1000)
         ],
         gradient_clip_val=1.0,
+        # fast_dev_run=True
     )
     trainer.fit(
         trainer_module.train(),
@@ -169,8 +180,9 @@ def main():
     # Test?
     model_weight = {k:v for k,v in text_model.named_parameters() if v.requires_grad}
     lycoris_weight = lycoris_model.state_dict() | model_weight
-    torch.save(lycoris_weight, 'lycoris_weight.pt')
+    torch.save(lycoris_weight, 'lycoris_weight_final.pt')
 
 
 if __name__ == '__main__':
+    pl.seed_everything(3407)
     main()
