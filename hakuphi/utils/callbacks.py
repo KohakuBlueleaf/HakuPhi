@@ -64,6 +64,7 @@ class Iteratorize:
     def __next__(self):
         obj = self.q.get(True, None)
         if obj is self.sentinel:
+            self.thread.join()
             raise StopIteration
         else:
             return obj
