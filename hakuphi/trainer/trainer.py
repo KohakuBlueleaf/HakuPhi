@@ -19,17 +19,17 @@ class BaseTrainer(pl.LightningModule):
     def __init__(
         self,
         *args,
-        name = '',
+        name="",
         lr: float = 1e-5,
         optimizer: type[optim.Optimizer] = optim.AdamW,
         opt_configs: dict[str, Any] = {
-            'weight_decay': 0.01,
-            'betas': (0.9, 0.999),
+            "weight_decay": 0.01,
+            "betas": (0.9, 0.999),
         },
         lr_scheduler: Optional[type[lr_sch.LRScheduler]] = lr_sch.CosineAnnealingLR,
         lr_sch_configs: dict[str, Any] = {
-            'T_max': 100_000,
-            'eta_min': 1e-7,
+            "T_max": 100_000,
+            "eta_min": 1e-7,
         },
         use_warm_up: bool = True,
         warm_up_period: int = 1000,
@@ -48,32 +48,25 @@ class BaseTrainer(pl.LightningModule):
 
     def configure_optimizers(self):
         assert self.train_params is not None
-        optimizer = self.optimizer(
-            self.train_params, 
-            lr = self.lr,
-            **self.opt_configs
-        )
-        
+        optimizer = self.optimizer(self.train_params, lr=self.lr, **self.opt_configs)
+
         lr_sch = None
         if self.lr_sch is not None:
             lr_sch = self.lr_sch(optimizer, **self.lr_sch_configs)
-        
+
         if self.use_warm_up:
-            lr_scheduler =  GradualWarmupScheduler(
+            lr_scheduler = GradualWarmupScheduler(
                 optimizer, 1, self.warm_up_period, lr_sch
             )
         else:
             lr_scheduler = lr_sch
-        
+
         if lr_scheduler is None:
             return optimizer
         else:
             return {
-                'optimizer': optimizer,
-                'lr_scheduler': {
-                    'scheduler': lr_scheduler,
-                    'interval': 'step'
-                }
+                "optimizer": optimizer,
+                "lr_scheduler": {"scheduler": lr_scheduler, "interval": "step"},
             }
 
 
@@ -86,7 +79,7 @@ class CausalLMTrainer(BaseTrainer):
         **kwargs,
     ):
         super(CausalLMTrainer, self).__init__(*args, **kwargs)
-        self.save_hyperparameters(ignore=['text_model', 'lycoris_model'])
+        self.save_hyperparameters(ignore=["text_model", "lycoris_model"])
         self.text_model = text_model
         self.lycoris_model = lycoris_model
         if lycoris_model is not None:
@@ -94,7 +87,7 @@ class CausalLMTrainer(BaseTrainer):
             self.lycoris_model.train()
             self.train_params = chain(
                 self.lycoris_model.parameters(),
-                (p for p in self.text_model.parameters() if p.requires_grad)
+                (p for p in self.text_model.parameters() if p.requires_grad),
             )
         else:
             self.text_model.train()
@@ -104,7 +97,7 @@ class CausalLMTrainer(BaseTrainer):
     def on_train_epoch_end(self) -> None:
         self.epoch += 1
         if self.lycoris_model is not None:
-            dir = './lycoris_weight'
+            dir = "./lycoris_weight"
             epoch = self.epoch
             if self._trainer is not None:
                 trainer = self._trainer
@@ -116,27 +109,31 @@ class CausalLMTrainer(BaseTrainer):
                         save_dir = trainer.default_root_dir
                     name = trainer.loggers[0].name
                     version = trainer.loggers[0].version
-                    version = version if isinstance(version, str) else f"version_{version}"
+                    version = (
+                        version if isinstance(version, str) else f"version_{version}"
+                    )
                     dir = os.path.join(save_dir, str(name), version, "lycoris_weight")
                 else:
                     # if no loggers, use default_root_dir
                     dir = os.path.join(trainer.default_root_dir, "lycoris_weight")
             os.makedirs(dir, exist_ok=True)
-            model_weight = {k:v for k,v in self.text_model.named_parameters() if v.requires_grad}
+            model_weight = {
+                k: v for k, v in self.text_model.named_parameters() if v.requires_grad
+            }
             lycoris_weight = self.lycoris_model.state_dict() | model_weight
-            torch.save(lycoris_weight, os.path.join(dir, f'epoch={epoch}.pt'))
+            torch.save(lycoris_weight, os.path.join(dir, f"epoch={epoch}.pt"))
 
     def training_step(self, batch, idx):
-        input_ids = batch['input_ids']
-        labels = batch['labels']
-        
+        input_ids = batch["input_ids"]
+        labels = batch["labels"]
+
         result = self.text_model(
-            input_ids = input_ids,
-            labels = labels,
+            input_ids=input_ids,
+            labels=labels,
         )
         loss = result.loss
-        
+
         if self._trainer is not None:
-            self.log('train/loss', loss, on_step=True, logger=True, prog_bar=True)
-        
+            self.log("train/loss", loss, on_step=True, logger=True, prog_bar=True)
+
         return loss

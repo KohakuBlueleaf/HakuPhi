@@ -4,23 +4,19 @@ from datasets import load_dataset
 
 SELF_FOLDER = os.path.dirname(__file__)
 SPLITS = {
-    'all': ['summary-preferation-set.json'],
+    "all": ["summary-preferation-set.json"],
 }
 
 
-def load(split='all'):
+def load(split="all"):
     assert split in SPLITS
     return load_dataset(
-        'json', 
-        data_files=[
-            os.path.join(SELF_FOLDER, i) 
-            for i in SPLITS[split]
-        ]
+        "json", data_files=[os.path.join(SELF_FOLDER, i) for i in SPLITS[split]]
     )
 
 
 def generate_prompt(data_point):
-    '''Guanaco-alpaca chat format'''
+    """Guanaco-alpaca chat format"""
     user_part = f"""### Instruct:
 Use student's preferation to predict the summary of final choosed course.
 
@@ -28,7 +24,7 @@ Use student's preferation to predict the summary of final choosed course.
 {data_point['preferation']}
 
 """
-    
+
     output_part = f"""### Response:
 {data_point["summary"]}"""
 
@@ -60,36 +56,37 @@ def tokenize(tokenizer, prompt, cutoff_len=2048, add_eos_token=True):
 
 def processor(tokenizer, cutoff_len=2048, train_on_inputs=False, padding=True):
     import torch
+
     def generate_and_tokenize_prompt(data_point):
         user_part, output_part = generate_prompt(data_point)
-        tokenized_full_prompt = tokenize(tokenizer, user_part+output_part, cutoff_len, add_eos_token=True)
-        tokenized_user_prompt = tokenize(tokenizer, user_part, cutoff_len, add_eos_token=False)
+        tokenized_full_prompt = tokenize(
+            tokenizer, user_part + output_part, cutoff_len, add_eos_token=True
+        )
+        tokenized_user_prompt = tokenize(
+            tokenizer, user_part, cutoff_len, add_eos_token=False
+        )
         user_prompt_len = len(tokenized_user_prompt["input_ids"])
         full_prompt_len = len(tokenized_full_prompt["input_ids"])
-        
+
         if not train_on_inputs:
-            tokenized_full_prompt['labels'] = (
-                [-100] * user_prompt_len 
-                + tokenized_full_prompt['labels'][user_prompt_len:]
-            )
-        
+            tokenized_full_prompt["labels"] = [
+                -100
+            ] * user_prompt_len + tokenized_full_prompt["labels"][user_prompt_len:]
+
         pad_len = cutoff_len - full_prompt_len
         if padding:
-            tokenized_full_prompt['input_ids'] = (
-                tokenized_full_prompt['input_ids']
-                + [0] * pad_len 
+            tokenized_full_prompt["input_ids"] = (
+                tokenized_full_prompt["input_ids"] + [0] * pad_len
             )
-            tokenized_full_prompt['labels'] = (
-                tokenized_full_prompt['labels']
-                + [-100] * pad_len
+            tokenized_full_prompt["labels"] = (
+                tokenized_full_prompt["labels"] + [-100] * pad_len
             )
-            tokenized_full_prompt['attention_mask'] = (
-                tokenized_full_prompt['attention_mask']
-                + [0] * pad_len 
+            tokenized_full_prompt["attention_mask"] = (
+                tokenized_full_prompt["attention_mask"] + [0] * pad_len
             )
-        
+
         for k in tokenized_full_prompt.keys():
             tokenized_full_prompt[k] = torch.LongTensor(tokenized_full_prompt[k])
         return tokenized_full_prompt
-    
+
     return generate_and_tokenize_prompt

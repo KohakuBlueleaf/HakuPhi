@@ -10,18 +10,14 @@ from .modeling_phi import (
     MLP,
     ParallelBlock,
     InferenceParams,
-    CausalLMLoss
+    CausalLMLoss,
 )
-from .configuration_phi import (
-    PhiConfig
-)
+from .configuration_phi import PhiConfig
 
 from .modeling_phi_hf import (
     PhiForCausalLM as HfPhiForCausalLM,
     PhiForTokenClassification as HfPhiForTokenClassification,
     PhiModel as HfPhiModel,
-    PhiPreTrainedModel as HfPhiPreTrainedModel
+    PhiPreTrainedModel as HfPhiPreTrainedModel,
 )
-from .configuration_phi_hf import (
-    PhiConfig as HfPhiConfig
-)
+from .configuration_phi_hf import PhiConfig as HfPhiConfig

@@ -9,7 +9,7 @@ from hakuphi.utils.callbacks import Iteratorize, Stream
 def generate(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
-    prompt='',
+    prompt="",
     temperature=0.5,
     top_p=0.95,
     top_k=45,
@@ -35,22 +35,17 @@ def generate(
         "output_scores": True,
         "max_new_tokens": max_new_tokens,
     }
-    
+
     if stream_output:
+
         def generate_with_callback(callback=None, **kwargs):
-            kwargs.setdefault(
-                "stopping_criteria", transformers.StoppingCriteriaList()
-            )
-            kwargs["stopping_criteria"].append(
-                Stream(callback_func=callback)
-            )
-            with torch.no_grad(), torch.autocast('cuda'):
+            kwargs.setdefault("stopping_criteria", transformers.StoppingCriteriaList())
+            kwargs["stopping_criteria"].append(Stream(callback_func=callback))
+            with torch.no_grad(), torch.autocast("cuda"):
                 model.generate(**kwargs)
 
         def generate_with_streaming(**kwargs):
-            return Iteratorize(
-                generate_with_callback, kwargs, callback=None
-            )
+            return Iteratorize(generate_with_callback, kwargs, callback=None)
 
         with generate_with_streaming(**generate_params) as generator:
             for output in generator:
@@ -62,7 +57,7 @@ def generate(
 
                 yield decoded_output
         return  # early return for stream_output
-    with torch.no_grad(), torch.autocast('cuda'):
+    with torch.no_grad(), torch.autocast("cuda"):
         generation_output = model.generate(
             input_ids=input_ids,
             generation_config=generation_config,

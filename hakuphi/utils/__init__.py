@@ -55,7 +55,7 @@ def random_choice(
 ):
     rand_x = list(x)
     shuffle(rand_x)
-    
+
     return torch.stack(rand_x[:num])
 
 
