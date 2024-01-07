@@ -1014,13 +1014,7 @@ class PhiForCausalLM(PhiPreTrainedModel):
                 "`attention_mask` is not supported during training. Using it might lead to unexpected results."
             )
 
-        if self.gradient_checkpointing and self.training:
-            hidden_layer = checkpoint(
-                self.transformer.embd, input_ids, use_reentrant=True
-            )
-        else:
-            hidden_layer = self.transformer.embd(input_ids)
-
+        hidden_layer = self.transformer.embd(input_ids)
         if self.training:
             hidden_layer.requires_grad_(True)
 
