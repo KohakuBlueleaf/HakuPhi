@@ -16,10 +16,11 @@ def generate(
     repetition_penalty=1.17,
     max_new_tokens=128,
     stream_output=False,
+    autocast_gen=lambda: torch.autocast("cpu", enabled=False),
     **kwargs,
 ):
     inputs = tokenizer(prompt, return_tensors="pt")
-    input_ids = inputs["input_ids"].cuda()
+    input_ids = inputs["input_ids"].to(next(model.parameters()).device)
     generation_config = GenerationConfig(
         temperature=temperature,
         top_p=top_p,
@@ -41,7 +42,7 @@ def generate(
         def generate_with_callback(callback=None, **kwargs):
             kwargs.setdefault("stopping_criteria", transformers.StoppingCriteriaList())
             kwargs["stopping_criteria"].append(Stream(callback_func=callback))
-            with torch.no_grad(), torch.autocast("cuda"):
+            with torch.no_grad(), autocast_gen():
                 model.generate(**kwargs)
 
         def generate_with_streaming(**kwargs):
@@ -57,7 +58,7 @@ def generate(
 
                 yield decoded_output
         return  # early return for stream_output
-    with torch.no_grad(), torch.autocast("cuda"):
+    with torch.no_grad(), autocast_gen():
         generation_output = model.generate(
             input_ids=input_ids,
             generation_config=generation_config,

@@ -3,8 +3,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="hakuphi",
-    packages=find_packages(exclude=['data*']),
-    version="0.0.1.dev2",
+    packages=find_packages(exclude=["data*"]),
+    version="0.0.1.dev3",
     url="https://github.com/KohakuBlueleaf/HakuPhi",
     description="A playground to place lot of things about phi.",
     author="KohakuBlueLeaf",

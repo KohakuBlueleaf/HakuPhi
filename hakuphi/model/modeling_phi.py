@@ -66,6 +66,9 @@ class InferenceParams:
         default=None, metadata={"help": "Lengths per sample."}
     )
 
+    def __len__(self) -> int:
+        return self.seqlen_offset
+
 
 class Embedding(nn.Module):
     """Token embedding with dropout."""
@@ -521,10 +524,10 @@ def _update_kv_cache(
     # When the current sequence length is equal to or larger than the maximum sequence length,
     # we need to roll the cache to the left and update it
     if sequence_end >= inference_params.max_seqlen:
-        inference_params.key_value_memory_dict[
-            layer_idx
-        ] = inference_params.key_value_memory_dict[layer_idx].roll(
-            -(sequence_end - sequence_start), 1
+        inference_params.key_value_memory_dict[layer_idx] = (
+            inference_params.key_value_memory_dict[layer_idx].roll(
+                -(sequence_end - sequence_start), 1
+            )
         )
 
     inference_params.key_value_memory_dict[layer_idx][

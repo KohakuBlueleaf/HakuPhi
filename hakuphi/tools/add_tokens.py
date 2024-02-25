@@ -1,6 +1,7 @@
 """
 Add new tokens from Traditional Chinese and Japanese
 """
+
 import os
 import csv
 
