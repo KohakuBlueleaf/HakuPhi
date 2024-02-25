@@ -19,13 +19,12 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 
-from bitsandbytes import optim as bnb_optim
 
-
-EPOCH = 1
+EPOCH = 10
 GPUS = 1
-BATCH_SIZE = 1
-GRAD_ACC = 2
+BATCH_SIZE = 16
+GRAD_ACC = 16
+CUT_OFF = 384
 
 
 def load_model(
@@ -49,7 +48,7 @@ def load_trainer(
         model,
         lycoris_model,
         name="NanoLLaMA_promptgen",
-        lr=1e-5,
+        lr=1e-4,
         optimizer=torch.optim.AdamW,
         opt_configs={
             "weight_decay": 0.01,
@@ -58,9 +57,9 @@ def load_trainer(
         lr_scheduler=lr_sch.CosineAnnealingLR,
         lr_sch_configs={
             "T_max": t_max,
-            "eta_min": 1e-2 * 1e-5,
+            "eta_min": 1e-2 * 1e-4,
         },
-        use_warm_up=False,
+        use_warm_up=True,
         warm_up_period=1000,
     )
 
@@ -103,7 +102,7 @@ def main():
     def collate(batch):
         batch = [dan_prompt.generate_prompt(data) for data in batch]
         result = tokenizer(
-            batch, return_tensors="pt", padding=True, truncation=True, max_length=512
+            batch, return_tensors="pt", padding=True, truncation=True, max_length=CUT_OFF
         )
         result["labels"] = result["input_ids"].clone()
         return result
@@ -116,7 +115,7 @@ def main():
     )
 
     trainer_module = load_trainer(
-        text_model,
+        text_model.to(torch.bfloat16),
         None,
         len(dataset) * EPOCH // (BATCH_SIZE * GPUS * GRAD_ACC),
     )
@@ -130,7 +129,7 @@ def main():
         offline=True,
     )
     trainer = pl.Trainer(
-        precision="16-mixed",
+        precision="bf16-true",
         accelerator="gpu",
         devices=GPUS,
         max_epochs=EPOCH,
@@ -153,61 +152,6 @@ def main():
     tokenizer.save_pretrained("nanollama-test")
 
 
-def test():
-    config = LlamaConfig(
-        vocab_size=32006,
-        hidden_size=1024,
-        intermediate_size=3072,
-        num_hidden_layers=24,
-        num_attention_heads=1024 // 64,
-        num_key_value_heads=None,
-        hidden_act="silu",
-        max_position_embeddings=512,
-        initializer_range=0.02,
-        rms_norm_eps=1e-5,
-        use_cache=True,
-        pad_token_id=None,
-        bos_token_id=1,
-        eos_token_id=2,
-        pretraining_tp=1,
-        tie_word_embeddings=False,
-        rope_theta=10000.0,
-        rope_scaling=None,
-        attention_bias=False,
-        attention_dropout=0.0,
-        attn_implementation="flash_attention_2",
-    )
-    tokenizer, text_model = load_model(config)
-    tokenizer: LlamaTokenizer
-    text_model: LlamaForCausalLM
-    print(sum(param.shape.numel() for param in text_model.parameters()))
-
-    # Setup dataset
-    dataset = dan_prompt.load()
-    print(f"Total training step: {len(dataset)*EPOCH//(BATCH_SIZE*GPUS*GRAD_ACC)}")
-
-    def collate(batch):
-        batch = [dan_prompt.generate_prompt(data) for data in batch]
-        result = tokenizer(
-            batch, return_tensors="pt", padding=True, truncation=True, max_length=384
-        )
-        result["labels"] = result["input_ids"].clone()
-        return result
-
-    data_loader = Data.DataLoader(
-        dataset,
-        shuffle=True,
-        batch_size=BATCH_SIZE,
-        collate_fn=collate,  # , num_workers=4
-    )
-    for x in iter(data_loader):
-        print(x["input_ids"].shape)
-        print(x["attention_mask"].shape)
-        print(x["labels"].shape)
-        break
-
-
 if __name__ == "__main__":
-    # test()
     pl.seed_everything(3407)
     main()
