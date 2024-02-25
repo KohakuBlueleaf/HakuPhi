@@ -27,18 +27,21 @@ GRAD_ACC = 16
 CUT_OFF = 384
 
 
+def load_tokenizer(tokenizer_ref="TinyLlama/TinyLlama-1.1B-intermediate-step-480k-1T"):
+    tokenizer = LlamaTokenizer.from_pretrained(tokenizer_ref)
+    dan_prompt.apply_special_tokens(tokenizer)
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    return tokenizer
+
+
 def load_model(
     config: LlamaConfig,
-    tokenizer_ref="TinyLlama/TinyLlama-1.1B-intermediate-step-480k-1T",
-) -> tuple[LlamaTokenizer, LlamaForCausalLM]:
-    tokenizer: LlamaTokenizer = LlamaTokenizer.from_pretrained(tokenizer_ref)
-    tokenizer = dan_prompt.apply_special_tokens(tokenizer)
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer: LlamaTokenizer,
+) -> LlamaForCausalLM:
     config.pad_token_id = tokenizer.eos_token_id
     config.vocab_size = tokenizer.get_vocab().__len__()
-    print(config.vocab_size)
     model = LlamaForCausalLM(config)
-    return tokenizer, model
+    return model
 
 
 def load_trainer(
@@ -64,7 +67,35 @@ def load_trainer(
     )
 
 
+tokenizer: LlamaTokenizer = load_tokenizer()
+def collate(batch):
+    batch = [dan_prompt.generate_prompt(data) for data in batch]
+    result = tokenizer(
+        batch,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=CUT_OFF,
+    )
+    result["labels"] = result["input_ids"].clone()
+    return result
+
+
 def main():
+    # Setup dataset
+    dataset = dan_prompt.load()
+    print(f"Total training step: {len(dataset)*EPOCH//(BATCH_SIZE*GPUS*GRAD_ACC)}")
+
+    data_loader = Data.DataLoader(
+        dataset,
+        shuffle=True,
+        batch_size=BATCH_SIZE,
+        collate_fn=collate,
+        num_workers=8,
+        pin_memory=True,
+        drop_last=True,
+    )
+
     config = LlamaConfig(
         vocab_size=32006,
         hidden_size=1024,
@@ -89,33 +120,12 @@ def main():
         attn_implementation="flash_attention_2",
         torch_dtype=torch.float16,
     )
-    tokenizer, text_model = load_model(config)
-    tokenizer: LlamaTokenizer
-    text_model: LlamaForCausalLM
+    text_model = load_model(config, tokenizer)
     print(sum(param.shape.numel() for param in text_model.parameters()))
     text_model.gradient_checkpointing_enable()
 
-    # Setup dataset
-    dataset = dan_prompt.load()
-    print(f"Total training step: {len(dataset)*EPOCH//(BATCH_SIZE*GPUS*GRAD_ACC)}")
-
-    def collate(batch):
-        batch = [dan_prompt.generate_prompt(data) for data in batch]
-        result = tokenizer(
-            batch, return_tensors="pt", padding=True, truncation=True, max_length=CUT_OFF
-        )
-        result["labels"] = result["input_ids"].clone()
-        return result
-
-    data_loader = Data.DataLoader(
-        dataset,
-        shuffle=True,
-        batch_size=BATCH_SIZE,
-        collate_fn=collate,  # , num_workers=4
-    )
-
     trainer_module = load_trainer(
-        text_model.to(torch.bfloat16),
+        text_model.to(torch.float),
         None,
         len(dataset) * EPOCH // (BATCH_SIZE * GPUS * GRAD_ACC),
     )
@@ -129,7 +139,7 @@ def main():
         offline=True,
     )
     trainer = pl.Trainer(
-        precision="bf16-true",
+        precision="bf16-mixed",
         accelerator="gpu",
         devices=GPUS,
         max_epochs=EPOCH,
