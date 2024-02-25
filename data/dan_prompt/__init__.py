@@ -30,7 +30,7 @@ needed_special_token = [
 
 
 def apply_special_tokens(tokenizer):
-    tokenizer.add_tokens(needed_special_token, special_tokens=True)
+    tokenizer._add_tokens(needed_special_token, special_tokens=True)
     return tokenizer
 
 
