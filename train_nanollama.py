@@ -30,7 +30,7 @@ CUT_OFF = 384
 def load_tokenizer(tokenizer_ref="TinyLlama/TinyLlama-1.1B-intermediate-step-480k-1T"):
     tokenizer = LlamaTokenizer.from_pretrained(tokenizer_ref)
     dan_prompt.apply_special_tokens(tokenizer)
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
 
 
@@ -68,16 +68,20 @@ def load_trainer(
 
 
 tokenizer: LlamaTokenizer = load_tokenizer()
+processor = dan_prompt.processor(
+    tokenizer, cutoff_len=CUT_OFF, train_on_inputs=False, padding=True
+)
+
+
 def collate(batch):
-    batch = [dan_prompt.generate_prompt(data) for data in batch]
-    result = tokenizer(
-        batch,
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=CUT_OFF,
-    )
-    result["labels"] = result["input_ids"].clone()
+    batch = [processor(data) for data in batch]
+    result = {
+        "input_ids": torch.stack([x["input_ids"] for x in batch]),
+        "attention_mask": torch.stack(
+            [x["attention_mask"] for x in batch]
+        ),
+        "labels": torch.stack([x["labels"] for x in batch]),
+    }
     return result
 
 
@@ -156,6 +160,7 @@ def main():
     trainer.fit(
         trainer_module.train(),
         train_dataloaders=data_loader,
+        ckpt_path="./NanoLLaMA/epoch=5-step=45000.ckpt"
     )
 
     text_model.save_pretrained("nanollama-test")
