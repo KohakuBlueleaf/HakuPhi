@@ -73,7 +73,7 @@ class BaseTrainer(pl.LightningModule):
 class CausalLMTrainer(BaseTrainer):
     def __init__(
         self,
-        text_model: PreTrainedModel,
+        text_model: PreTrainedModel = nn.Module(),
         lycoris_model: nn.Module = None,
         *args,
         **kwargs,

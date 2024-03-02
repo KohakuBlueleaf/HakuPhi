@@ -21,9 +21,9 @@ from pytorch_lightning.loggers import WandbLogger
 
 
 EPOCH = 10
-GPUS = 1
-BATCH_SIZE = 16
-GRAD_ACC = 16
+GPUS = 2
+BATCH_SIZE = 32
+GRAD_ACC = 4
 CUT_OFF = 384
 
 
@@ -160,7 +160,6 @@ def main():
     trainer.fit(
         trainer_module.train(),
         train_dataloaders=data_loader,
-        ckpt_path="./NanoLLaMA/epoch=5-step=45000.ckpt"
     )
 
     text_model.save_pretrained("nanollama-test")
