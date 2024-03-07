@@ -35,25 +35,48 @@ def apply_special_tokens(tokenizer):
 
 
 def generate_prompt(data, target_len="long", tag_seperator=", "):
-    if target_len is None:
-        target_len = choice(length_map)
+    total_target = len(data["general"])
     shuffle(data["general"])
 
-    total_target = len(data["general"])
+    if target_len is None:
+        target_len = choice(
+            [leng for leng, count_max in length_map.item() if count_max <= total_target]
+        )
+
     length = min(length_map[target_len], total_target)
-    input_target = randint(
-        1 * (length // 5),
-        length - 1 * (length // 5),
-    )
+    input_target = randint(1, length * 3 // 5)
+
+    # 20% total drop
+    total_drop = random() < 0.2
+    if total_drop:
+        input_target = 0
 
     prompt_input = data["general"][:input_target]
     prompt_output = data["general"][input_target:total_target]
     generals = data["special"] + prompt_input
 
-    rating_str = f"rating: {tag_seperator.join(data['rating']) or '<|empty|>' if random() > 0.7 else '<|empty|>'}"
-    artist_str = f"artist: {tag_seperator.join(data['artist']) or '<|empty|>' if random() > 0.7 else '<|empty|>'}"
-    character_str = f"characters: {tag_seperator.join(data['character']) or '<|empty|>' if random() > 0.7 else '<|empty|>'}"
-    copyright_str = f"copyrights: {tag_seperator.join(data['copyright']) or '<|empty|>' if random() > 0.7 else '<|empty|>'}"
+    rating_tag = tag_seperator.join(data["rating"]) or "<|empty|>"
+    artist_tag = tag_seperator.join(data["artist"]) or "<|empty|>"
+    character_tag = tag_seperator.join(data["character"]) or "<|empty|>"
+    copyright_tag = tag_seperator.join(data["copyright"]) or "<|empty|>"
+
+    drop_info = not total_drop and random() < 0.5
+    if drop_info:
+        rating_str = f"rating: {rating_tag if random() > 0.5 else '<|empty|>'}"
+        artist_str = f"artist: {artist_tag if random() > 0.5 else '<|empty|>'}"
+        character_str = (
+            f"characters: {character_tag if random() > 0.5 else '<|empty|>'}"
+        )
+        copyright_str = (
+            f"copyrights: {copyright_tag if random() > 0.5 else '<|empty|>'}"
+        )
+    else:
+        # When total drop is triggered.
+        # Provide all other information to learn the relationship
+        rating_str = f"rating: {rating_tag}"
+        artist_str = f"artist: {artist_tag}"
+        character_str = f"characters: {character_tag}"
+        copyright_str = f"copyrights: {copyright_tag}"
 
     prior_info = [rating_str, artist_str, character_str, copyright_str]
     shuffle(prior_info)
@@ -131,7 +154,10 @@ def processor(tokenizer, cutoff_len=2048, train_on_inputs=False, padding=True):
 
 if __name__ == "__main__":
     from transformers import LlamaTokenizer
-    def load_tokenizer(tokenizer_ref="TinyLlama/TinyLlama-1.1B-intermediate-step-480k-1T"):
+
+    def load_tokenizer(
+        tokenizer_ref="TinyLlama/TinyLlama-1.1B-intermediate-step-480k-1T",
+    ):
         tokenizer = LlamaTokenizer.from_pretrained(tokenizer_ref)
         apply_special_tokens(tokenizer)
         tokenizer.pad_token = tokenizer.eos_token
