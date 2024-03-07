@@ -1,5 +1,11 @@
 Haku-phi/
 wandb/
+*.json
+*.jsonl
+*.ckpt
+*.model
+*.safetensors
+*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
