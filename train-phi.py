@@ -98,7 +98,6 @@ def lycoris_wrapper(
 ):
     from lycoris.wrapper import create_lycoris, LycorisNetwork
 
-    lycoris_settings = lycoris_settings
     if lycoris_presets is not None:
         LycorisNetwork.apply_preset(lycoris_presets)
     lycoris_net = create_lycoris(module=main_module, **lycoris_settings)

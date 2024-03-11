@@ -44,7 +44,7 @@ def generate_prompt(data, target_len="long", tag_seperator=", "):
         )
 
     length = min(length_map[target_len], total_target)
-    input_target = randint(1, max(length * 3 // 5, 1)+1)
+    input_target = randint(1, max(length * 3 // 5, 1) + 1)
 
     # 20% total drop
     total_drop = random() < 0.2
