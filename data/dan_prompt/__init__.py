@@ -46,8 +46,8 @@ def generate_prompt(data, target_len="long", tag_seperator=", "):
     length = min(length_map[target_len], total_target)
     input_target = randint(1, max(length * 3 // 5, 1) + 1)
 
-    # 20% total drop
-    total_drop = random() < 0.2
+    # 30% total drop
+    total_drop = random() < 0.3
     if total_drop:
         input_target = 0
 
@@ -70,6 +70,10 @@ def generate_prompt(data, target_len="long", tag_seperator=", "):
         copyright_str = (
             f"copyrights: {copyright_tag if random() > 0.5 else '<|empty|>'}"
         )
+        if random() > 0.5:
+            aspect_ratio = f"aspect ratio: {data['width']/data['height']:.1f}"
+        else:
+            aspect_ratio = f"aspect ratio: <|empty|>"
     else:
         # When total drop is triggered.
         # Provide all other information to learn the relationship
@@ -77,8 +81,9 @@ def generate_prompt(data, target_len="long", tag_seperator=", "):
         artist_str = f"artist: {artist_tag}"
         character_str = f"characters: {character_tag}"
         copyright_str = f"copyrights: {copyright_tag}"
+        aspect_ratio = f"aspect ratio: {data['width']/data['height']:.1f}"
 
-    prior_info = [rating_str, artist_str, character_str, copyright_str]
+    prior_info = [rating_str, artist_str, aspect_ratio, character_str, copyright_str]
     shuffle(prior_info)
     prior = "\n".join(prior_info)
 
@@ -87,6 +92,9 @@ target: <|{target_len}|>
 general: {tag_seperator.join(generals)}<|input_end|>""".strip()
 
     output_prompt = tag_seperator.join(prompt_output)
+
+    if random() < 0.3:
+        user_prompt, output_prompt = "", user_prompt + output_prompt
 
     return user_prompt, output_prompt
 
