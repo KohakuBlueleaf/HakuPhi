@@ -6,6 +6,7 @@ wandb/
 *.model
 *.safetensors
 *.pt
+*.parquet
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

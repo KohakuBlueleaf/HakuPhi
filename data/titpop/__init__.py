@@ -5,29 +5,38 @@ from random import shuffle, randint, choice, random
 
 SELF_FOLDER = os.path.dirname(__file__)
 SPLITS = {
-    "all": ["captions.jsonl"],
-    "delta": ["captions-full.jsonl"],
-    "ft": ["captions-7349999-top25-all-after-5000000.jsonl"],
+    "danbooru": ["danbooru2023-prompt-gen-data.parquet"],
+    "gbc": ["GBC10M-top-level-caption.parquet"],
 }
 
 
-def load(split="all"):
+def load(split="danbooru"):
     assert split in SPLITS
     return load_dataset(
-        "json", data_files=[os.path.join(SELF_FOLDER, i) for i in SPLITS[split]]
+        "parquet", data_files=[os.path.join(SELF_FOLDER, i) for i in SPLITS[split]]
     )["train"]
 
 
 length_map = {
-    "very_short": 8,
-    "short": 16,
-    "long": 32,
-    "very_long": 48,
+    "very_short": 10,
+    "short": 20,
+    "long": 40,
+    "very_long": 60,
 }
+task_type = [
+    "tag_to_long",
+    "long_to_tag",
+    "short_to_tag",
+    "short_to_long",
+    "tag_to_short_to_long",
+    "short_to_tag_to_long",
+    "short_to_long_to_tag",
+    "gen_meta",
+]
 needed_special_token = [
-    "<|input_end|>",
     "<|empty|>",
     *(f"<|{length}|>" for length in length_map.keys()),
+    *(f"<|{task}|>" for task in task_type),
 ]
 
 
@@ -36,7 +45,7 @@ def apply_special_tokens(tokenizer):
     return tokenizer
 
 
-def generate_prompt(data, target_len="long", tag_seperator=", "):
+def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
     total_target = len(data["general"])
     shuffle(data["general"])
 
@@ -51,22 +60,24 @@ def generate_prompt(data, target_len="long", tag_seperator=", "):
         target_len = "very_short" if not target_len else target_len[-1]
     input_target = randint(1, max(length * 3 // 5, 1) + 1)
 
-    # 30% total drop
-    total_drop = random() < 0.3
+    # 10% total drop
+    total_drop = random() < 0.10
     if total_drop:
         input_target = 0
 
-    prompt_input = data["general"][:input_target]
+    prompt_input = data["special"] + data["general"][:input_target]
     prompt_output = data["general"][input_target:total_target]
-    generals = data["special"] + prompt_input
+    generals = data["special"] + data["general"]
 
     rating_tag = tag_seperator.join(data["rating"]) or "<|empty|>"
     artist_tag = tag_seperator.join(data["artist"]) or "<|empty|>"
     character_tag = tag_seperator.join(data["character"]) or "<|empty|>"
     copyright_tag = tag_seperator.join(data["copyright"]) or "<|empty|>"
     quality_tag = data.get("quality", None) or "<|empty|>"
+    if isinstance(quality_tag, list) and len(quality_tag) > 0:
+        quality_tag = quality_tag[0]
 
-    drop_info = not total_drop and random() < 0.5
+    drop_info = not total_drop and random() < 0.3
     if drop_info:
         rating_str = f"rating: {rating_tag if random() > 0.5 else '<|empty|>'}"
         artist_str = f"artist: {artist_tag if random() > 0.5 else '<|empty|>'}"
@@ -101,14 +112,109 @@ def generate_prompt(data, target_len="long", tag_seperator=", "):
     ]
     shuffle(prior_info)
     prior = "\n".join(prior_info)
+    florence_long = data["florence_long"]
+    florence_short = data["florence_short"]
+    phi3v_horny = data["phi3v_horny"]
 
-    user_prompt = f"""{prior}
-target: <|{target_len}|>
-general: {tag_seperator.join(generals)}<|input_end|>""".strip()
+    long = None
+    short = florence_short
+    if phi3v_horny is not None:
+        long = phi3v_horny
+    if florence_long is not None:
+        if long is not None:
+            short = florence_long if random() > 0.5 or short is None else short
+        else:
+            long = florence_long
 
-    output_prompt = tag_seperator.join(prompt_output)
+    tasks = []
+    if long is not None:
+        tasks.extend(["tag_to_long", "long_to_tag"])
 
-    if random() < 0.3:
+    # to not waste phi3v data
+    if short is not None and phi3v_horny is None:
+        tasks.extend(["short_to_tag"])
+
+    if long is not None and short is not None:
+        short = florence_short
+        tasks.extend(
+            ["tag_to_short_to_long", "short_to_long_to_tag", "short_to_tag_to_long"]
+        )
+
+    task = None
+    if len(tasks) != 0 and random() < (len(tasks) / len(tasks) + 1):
+        task = choice(tasks)
+        if task.startswith("tag_to"):
+            task_str = f"<|{target_len}|> <|{task}|>"
+        else:
+            task_str = f"<|{task}|>"
+    else:
+        task_str = f"<|{target_len}|>"
+
+    full_data = {
+        "tag": tag_seperator.join(generals),
+        "short": short,
+        "long": long,
+    }
+
+    output_prompt = ""
+    addon_output_prompt = ""
+    addon_user_prompt_before = ""
+    addon_user_prompt_after = ""
+
+    # 15% meta gen
+    if random() < 0.15:
+        task_str += " <|gen_meta|>"
+        prompt_input = data["special"] + prompt_input
+        addon_output_prompt += "\n" + prior
+    else:
+        addon_user_prompt_before = prior + "\n"
+
+    if task is not None:
+        data_order = task.split("_to_")
+        if data_order[0] == "tag":
+            addon_user_prompt_after += (
+                f"general tags: {tag_seperator.join(prompt_input)}" 
+                + tag_seperator
+            )
+            output_prompt += tag_seperator.join(prompt_output)
+        else:
+            addon_user_prompt_after += f"{data_order[0]}: {full_data[data_order[0]]}"
+            addon_user_prompt_after += "\n"
+        
+        for output_data in data_order[1:]:
+            output_prompt += f"{output_data}: {full_data[output_data]}\n"
+    else:
+        addon_user_prompt_after += (
+            f"tag: {tag_seperator.join(prompt_input)}" 
+            + tag_seperator
+        )
+        output_prompt = tag_seperator.join(prompt_output) + '\n'
+
+    user_prompt = (
+        addon_user_prompt_before 
+        + f"target: {task_str}\n" 
+        + addon_user_prompt_after
+    )
+
+    output_prompt = output_prompt.rstrip() + addon_output_prompt
+    output_prompt = output_prompt.rstrip()
+
+    # 30% train on input
+    if random() < 0.7:
+        user_prompt, output_prompt = "", user_prompt + output_prompt
+
+    return user_prompt, output_prompt
+
+
+def generate_prompt_gbc(data):
+    short = data["short_caption"] if random() > 0.5 else data["original_caption"]
+    long = data["detail_caption"]
+
+    user_prompt = f"""target: <|short_to_long|>
+short: {short}\nlong:""".strip()
+    output_prompt = long
+
+    if random() < 0.7:
         user_prompt, output_prompt = "", user_prompt + output_prompt
 
     return user_prompt, output_prompt
@@ -141,7 +247,10 @@ def processor(tokenizer, cutoff_len=2048, train_on_inputs=False, padding=True):
     import torch
 
     def generate_and_tokenize_prompt(data_point):
-        user_part, output_part = generate_prompt(data_point)
+        if "original_caption" in data_point:
+            user_part, output_part = generate_prompt_gbc(data_point)
+        else:
+            user_part, output_part = generate_prompt_dan(data_point)
         tokenized_full_prompt = tokenize(
             tokenizer, user_part + output_part, cutoff_len, add_eos_token=True
         )
@@ -189,6 +298,6 @@ if __name__ == "__main__":
     tokenizer: LlamaTokenizer = load_tokenizer()
     dataset = load("all")
     data = choice(dataset)
-    print(generate_prompt(data, "very_long"))
+    print(generate_prompt_dan(data, "very_long"))
     proc = processor(tokenizer, cutoff_len=384)
     print(proc(data))
