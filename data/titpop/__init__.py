@@ -81,29 +81,12 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
         quality_tag = quality_tag[0]
 
     drop_info = not total_drop and random() < 0.3
-    if drop_info:
-        rating_str = f"rating: {rating_tag if random() > 0.5 else '<|empty|>'}"
-        artist_str = f"artist: {artist_tag if random() > 0.5 else '<|empty|>'}"
-        character_str = (
-            f"characters: {character_tag if random() > 0.5 else '<|empty|>'}"
-        )
-        copyright_str = (
-            f"copyrights: {copyright_tag if random() > 0.5 else '<|empty|>'}"
-        )
-        quality_str = f"quality: {quality_tag if random() > 0.5 else '<|empty|>'}"
-        if random() > 0.5:
-            aspect_ratio = f"aspect ratio: {data['width']/data['height']:.1f}"
-        else:
-            aspect_ratio = f"aspect ratio: <|empty|>"
-    else:
-        # When total drop is triggered.
-        # Provide all other information to learn the relationship
-        rating_str = f"rating: {rating_tag}"
-        artist_str = f"artist: {artist_tag}"
-        character_str = f"characters: {character_tag}"
-        copyright_str = f"copyrights: {copyright_tag}"
-        quality_str = f"quality: {quality_tag}"
-        aspect_ratio = f"aspect ratio: {data['width']/data['height']:.1f}"
+    rating_str = f"rating: {rating_tag}"
+    artist_str = f"artist: {artist_tag}"
+    character_str = f"characters: {character_tag}"
+    copyright_str = f"copyrights: {copyright_tag}"
+    quality_str = f"quality: {quality_tag}"
+    aspect_ratio = f"aspect ratio: {data['width']/data['height']:.1f}"
 
     prior_info = [
         rating_str,
@@ -113,6 +96,8 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
         quality_str,
         copyright_str,
     ]
+    if drop_info:
+        prior_info = [info for info in prior_info if random()>0.5]
     shuffle(prior_info)
     prior = "\n".join(prior_info)
     florence_long = data["florence_long"]
@@ -164,14 +149,20 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
     addon_user_prompt_before = ""
     addon_user_prompt_after = ""
 
-    # 15% meta gen
-    # 35% no meta
-    # 50% normal
+    # When not total_drop or not drop_info, we have full meta info
+    # decide to use gen_meta or normal mode
+    # 35% meta gen
+    # 65% normal
     meta_gen_mode = random()
-    if meta_gen_mode < 0.15:
+    no_drop = not drop_info and not total_drop
+    if no_drop and meta_gen_mode < 0.3:
         task_str += " <|gen_meta|>"
-        addon_output_prompt += "\n" + prior
-    elif meta_gen_mode < 0.5:
+        given_meta_count = int(min(max(1, random() * len(prior_info)), len(prior_info)-1))
+        given_meta = prior_info[:given_meta_count]
+        target_meta = prior_info[given_meta_count:]
+        addon_user_prompt_before = "\n".join(given_meta) + "\n"
+        addon_output_prompt += "\n" + "\n".join(target_meta)
+    elif total_drop:
         addon_user_prompt_before = ""
     else:
         addon_user_prompt_before = prior + "\n"
