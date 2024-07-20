@@ -46,6 +46,9 @@ def apply_special_tokens(tokenizer):
 
 
 def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
+    data["general"] = [
+        tag for tag in data["general"] if (not (tag.isnumeric() and len(tag) == 4))
+    ]
     total_target = len(data["general"])
     shuffle(data["general"])
 
@@ -141,7 +144,7 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
         )
 
     task = None
-    if len(tasks) != 0 and random() < (len(tasks) / len(tasks) + 1):
+    if len(tasks) != 0 and random() < (len(tasks) / (len(tasks) + 1)):
         task = choice(tasks)
         if task.startswith("tag_to"):
             task_str = f"<|{target_len}|> <|{task}|>"
@@ -162,38 +165,34 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
     addon_user_prompt_after = ""
 
     # 15% meta gen
-    if random() < 0.15:
+    # 35% no meta
+    # 50% normal
+    meta_gen_mode = random()
+    if meta_gen_mode < 0.15:
         task_str += " <|gen_meta|>"
-        prompt_input = data["special"] + prompt_input
         addon_output_prompt += "\n" + prior
+    elif meta_gen_mode < 0.5:
+        addon_user_prompt_before = ""
     else:
         addon_user_prompt_before = prior + "\n"
 
     if task is not None:
         data_order = task.split("_to_")
         if data_order[0] == "tag":
-            addon_user_prompt_after += (
-                f"general tags: {tag_seperator.join(prompt_input)}" 
-                + tag_seperator
-            )
-            output_prompt += tag_seperator.join(prompt_output)
+            addon_user_prompt_after += f"tag: {tag_seperator.join(prompt_input)}"
+            output_prompt += tag_seperator + tag_seperator.join(prompt_output) + "\n"
         else:
             addon_user_prompt_after += f"{data_order[0]}: {full_data[data_order[0]]}"
             addon_user_prompt_after += "\n"
-        
+
         for output_data in data_order[1:]:
             output_prompt += f"{output_data}: {full_data[output_data]}\n"
     else:
-        addon_user_prompt_after += (
-            f"tag: {tag_seperator.join(prompt_input)}" 
-            + tag_seperator
-        )
-        output_prompt = tag_seperator.join(prompt_output) + '\n'
+        addon_user_prompt_after += f"tag: {tag_seperator.join(prompt_input)}"
+        output_prompt = tag_seperator + tag_seperator.join(prompt_output) + "\n"
 
     user_prompt = (
-        addon_user_prompt_before 
-        + f"target: {task_str}\n" 
-        + addon_user_prompt_after
+        addon_user_prompt_before + f"target: {task_str}\n" + addon_user_prompt_after
     )
 
     output_prompt = output_prompt.rstrip() + addon_output_prompt

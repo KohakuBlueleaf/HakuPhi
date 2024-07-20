@@ -179,7 +179,12 @@ class CausalLMTrainer(BaseTrainer):
             total_token_trained = self.total_token_trained
             if self.local_rank > 0:
                 with open(f"./temp/rank{self.local_rank}.txt", "w") as f:
-                    f.write(f"{self.total_token_seen} {self.total_token_trained} {current_total_perplexity} {batch_perplexity}\n")
+                    f.write(
+                        f"{self.total_token_seen} "
+                        f"{self.total_token_trained} "
+                        f"{current_total_perplexity} "
+                        f"{batch_perplexity}\n"
+                    )
             else:
                 for f in os.listdir("./temp"):
                     with open(os.path.join("./temp", f), "r") as g:
