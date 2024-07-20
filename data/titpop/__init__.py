@@ -97,7 +97,7 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
         copyright_str,
     ]
     if drop_info:
-        prior_info = [info for info in prior_info if random()>0.5]
+        prior_info = [info for info in prior_info if random() > 0.5]
     shuffle(prior_info)
     prior = "\n".join(prior_info)
     florence_long = data["florence_long"]
@@ -157,7 +157,9 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
     no_drop = not drop_info and not total_drop
     if no_drop and meta_gen_mode < 0.3:
         task_str += " <|gen_meta|>"
-        given_meta_count = int(min(max(1, random() * len(prior_info)), len(prior_info)-1))
+        given_meta_count = int(
+            min(max(1, random() * len(prior_info)), len(prior_info) - 1)
+        )
         given_meta = prior_info[:given_meta_count]
         target_meta = prior_info[given_meta_count:]
         addon_user_prompt_before = "\n".join(given_meta) + "\n"

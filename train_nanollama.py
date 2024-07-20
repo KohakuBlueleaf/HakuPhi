@@ -29,7 +29,7 @@ GPUS = 4
 BATCH_SIZE = 64
 GRAD_ACC = 4
 CUT_OFF = 512
-LR = 2e-4
+LR = 5e-4
 
 
 def load_tokenizer(
@@ -128,10 +128,11 @@ def main():
     # text_model = LlamaForCausalLM.from_pretrained("./DanTagGen-delta")
     print(sum(param.shape.numel() for param in text_model.parameters()))
     text_model.gradient_checkpointing_enable()
-    text_model = torch.compile(text_model, backend="eager")
+    text_model.to(torch.float)
+    text_model_eager = torch.compile(text_model, backend="eager")
 
     trainer_module = load_trainer(
-        text_model.to(torch.float),
+        text_model_eager,
         None,
         len(dataset) * EPOCH // (BATCH_SIZE * GPUS * GRAD_ACC),
     )
