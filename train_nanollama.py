@@ -2,31 +2,34 @@ import os
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-from data import dan_prompt, titpop
-
 import torch
-
-torch.set_float32_matmul_precision("medium")
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_sch
 import torch.utils.data as Data
-
-from transformers import LlamaForCausalLM, LlamaTokenizer, LlamaConfig
-
-from hakuphi.trainer import CausalLMTrainer
+import wandb
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+from transformers import LlamaForCausalLM, LlamaTokenizer, LlamaConfig
+
+from hakuphi.trainer import CausalLMTrainer
+from data import dan_prompt, titpop
 
 
+## Setup
 torch.set_default_dtype(torch.bfloat16)
+torch.set_float32_matmul_precision("medium")
+wandb.require("core")
+
+
+## Constant
 EPOCH = 2
 GPUS = 4
 BATCH_SIZE = 64
 GRAD_ACC = 4
 CUT_OFF = 512
-LR = 5e-4
+LR = 2e-4
 
 
 def load_tokenizer(
@@ -66,8 +69,8 @@ def load_trainer(
             "T_max": t_max,
             "eta_min": 1e-2 * LR,
         },
-        use_warm_up=False,
-        warm_up_period=1000,
+        use_warm_up=True,
+        warm_up_period=100,
     )
 
 
@@ -125,6 +128,7 @@ def main():
     # text_model = LlamaForCausalLM.from_pretrained("./DanTagGen-delta")
     print(sum(param.shape.numel() for param in text_model.parameters()))
     text_model.gradient_checkpointing_enable()
+    text_model = torch.compile(text_model, backend="eager")
 
     trainer_module = load_trainer(
         text_model.to(torch.float),
