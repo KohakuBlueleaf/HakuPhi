@@ -24,12 +24,12 @@ wandb.require("core")
 
 
 ## Constant
-EPOCH = 2
+EPOCH = 1
 GPUS = 4
-BATCH_SIZE = 64
-GRAD_ACC = 4
-CUT_OFF = 512
-LR = 5e-4
+BATCH_SIZE = 32
+GRAD_ACC = 8
+CUT_OFF = 768
+LR = 5e-5
 
 
 def load_tokenizer(
@@ -96,9 +96,9 @@ def collate(batch):
 
 def main():
     # Setup dataset
-    dataset1 = titpop.load("danbooru")
-    dataset2 = titpop.load("gbc")
-    dataset = Data.ConcatDataset([dataset1, dataset2])
+    dataset = titpop.load("danbooru")
+    # dataset2 = titpop.load("gbc")
+    # dataset = Data.ConcatDataset([dataset1, dataset2])
     data_loader = Data.DataLoader(
         dataset,
         shuffle=True,
@@ -110,26 +110,27 @@ def main():
         persistent_workers=True,
     )
 
-    config = LlamaConfig(
-        vocab_size=32006,
-        hidden_size=768,
-        intermediate_size=2304,
-        num_hidden_layers=20,
-        num_attention_heads=768 // 64,
-        hidden_act="silu",
-        max_position_embeddings=2048,
-        rms_norm_eps=1e-5,
-        use_cache=False,
-        attn_implementation="flash_attention_2",
-        torch_dtype=torch.bfloat16,
-    )
-    text_model = load_model(config, tokenizer)
-    text_model.init_weights()
-    # text_model = LlamaForCausalLM.from_pretrained("./DanTagGen-delta")
+    # config = LlamaConfig(
+    #     vocab_size=32006,
+    #     hidden_size=768,
+    #     intermediate_size=2304,
+    #     num_hidden_layers=20,
+    #     num_attention_heads=768 // 64,
+    #     hidden_act="silu",
+    #     max_position_embeddings=2048,
+    #     rms_norm_eps=1e-5,
+    #     use_cache=False,
+    #     attn_implementation="flash_attention_2",
+    #     torch_dtype=torch.bfloat16,
+    # )
+    # text_model = load_model(config, tokenizer)
+    # text_model.init_weights()
+    text_model = LlamaForCausalLM.from_pretrained("./TITPOP-200M-5ep")
     print(sum(param.shape.numel() for param in text_model.parameters()))
     text_model.gradient_checkpointing_enable()
     text_model.to(torch.float)
-    text_model_eager = torch.compile(text_model, backend="eager")
+    text_model_eager = text_model
+    # text_model_eager = torch.compile(text_model, backend="eager")
 
     trainer_module = load_trainer(
         text_model_eager,
@@ -151,7 +152,7 @@ def main():
         devices=GPUS,
         max_epochs=EPOCH,
         logger=logger,
-        log_every_n_steps=1,
+        log_every_n_steps=10,
         accumulate_grad_batches=GRAD_ACC,
         callbacks=[
             LearningRateMonitor(logging_interval="step"),
@@ -166,10 +167,10 @@ def main():
         train_dataloaders=data_loader,
     )
 
-    text_model.save_pretrained("TITPOP-200M")
-    tokenizer.save_pretrained("TITPOP-200M")
+    text_model.save_pretrained("TITPOP-200M-5ep-ft")
+    tokenizer.save_pretrained("TITPOP-200M-5ep-ft")
 
 
 if __name__ == "__main__":
-    pl.seed_everything(3407)
+    pl.seed_everything(3408)
     main()

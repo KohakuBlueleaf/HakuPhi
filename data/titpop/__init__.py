@@ -131,7 +131,7 @@ def generate_prompt_dan(data, target_len="long", tag_seperator=", "):
     task = None
     if len(tasks) != 0 and random() < (len(tasks) / (len(tasks) + 1)):
         task = choice(tasks)
-        if task.startswith("tag_to"):
+        if task.startswith("tag_to") or "to_tag" in task:
             task_str = f"<|{target_len}|> <|{task}|>"
         else:
             task_str = f"<|{task}|>"
