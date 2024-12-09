@@ -111,10 +111,7 @@ class CausalLMTrainer(BaseTrainer):
         if lycoris_model is not None:
             self.text_model.eval()
             self.lycoris_model.train()
-            self.train_params = chain(
-                self.lycoris_model.parameters(),
-                (p for p in self.text_model.parameters() if p.requires_grad),
-            )
+            self.train_params = self.lycoris_model.parameters()
         else:
             self.text_model.train()
             self.train_params = self.text_model.parameters()
